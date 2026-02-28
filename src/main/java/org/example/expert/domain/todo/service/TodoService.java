@@ -12,10 +12,16 @@ import org.example.expert.domain.todo.repository.TodoRepository;
 import org.example.expert.domain.user.dto.response.UserResponse;
 import org.example.expert.domain.user.entity.User;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -48,20 +54,36 @@ public class TodoService {
         );
     }
 
-    public Page<TodoResponse> getTodos(int page, int size) {
+    public Page<TodoResponse> getTodos(int page, int size, String weather, LocalDate startModifiedAt, LocalDate endModifiedAt) {
         Pageable pageable = PageRequest.of(page - 1, size);
 
-        Page<Todo> todos = todoRepository.findAllByOrderByModifiedAtDesc(pageable);
+        LocalDateTime start = null;
+        LocalDateTime end = null;
 
-        return todos.map(todo -> new TodoResponse(
-                todo.getId(),
-                todo.getTitle(),
-                todo.getContents(),
-                todo.getWeather(),
-                new UserResponse(todo.getUser().getId(), todo.getUser().getEmail()),
-                todo.getCreatedAt(),
-                todo.getModifiedAt()
-        ));
+        if (startModifiedAt != null) {
+            start = startModifiedAt.atStartOfDay(); // 00:00:00
+        }
+
+        if (endModifiedAt != null) {
+            end = endModifiedAt.atTime(LocalTime.MAX); // 23:59:59.999999999
+        }
+
+        List<Todo> todos = todoRepository.search(weather, start, end, pageable);
+        long total = todoRepository.countSearch(weather, start, end);
+
+        List<TodoResponse> todoResponses = todos.stream()
+                .map(todo -> new TodoResponse(
+                        todo.getId(),
+                        todo.getTitle(),
+                        todo.getContents(),
+                        todo.getWeather(),
+                        new UserResponse(todo.getUser().getId(), todo.getUser().getEmail()),
+                        todo.getCreatedAt(),
+                        todo.getModifiedAt()
+                ))
+                .toList();
+
+        return new PageImpl<>(todoResponses, pageable, total);
     }
 
     public TodoResponse getTodo(long todoId) {
